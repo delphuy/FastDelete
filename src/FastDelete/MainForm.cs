@@ -40,6 +40,14 @@ public sealed class MainForm : Form
     readonly List<string> _logLines = new();
     const int MaxLogLines = 500;
 
+    readonly Button _btnAbout = new();
+    readonly Label _lblUpdate = new();
+    readonly Panel _statusBar = new();
+    readonly Label _lblStatus = new();
+    string _latestVersion = "";
+    bool _hasUpdate = false;
+    string _updateUrl = "";
+
     public MainForm(string? autoAddDirectory = null)
     {
         _logFile = new LogFile("log");
@@ -55,6 +63,7 @@ public sealed class MainForm : Form
 
         _autoMode = !string.IsNullOrEmpty(autoAddDirectory);
         _lastDir = LoadLastDir();
+        CheckForUpdatesInBackground();
         FormClosing += (s, e) =>
         {
             if (_deleting)
@@ -181,8 +190,98 @@ public sealed class MainForm : Form
         _overlay.SizeChanged += (s, e) => LayoutCard();
         _overlay.Controls.Add(_overlayCard);
 
-        Controls.Add(mid); Controls.Add(_overlay);
+        Controls.Add(mid);
+        Controls.Add(_statusBar);
+        Controls.Add(_overlay);
+        BuildStatusBar();
         Load += (s, e) => { LayoutLeftBar(); LayoutCard(); _overlay.BringToFront(); };
+    }
+
+    void BuildStatusBar()
+    {
+        // 底部全宽状态栏：一条细分隔线 + 左端版本信息 + 右端「i」关于按钮 + 有更新标记
+        _statusBar.Dock = DockStyle.Bottom;
+        _statusBar.Height = 34;
+        _statusBar.BackColor = BarBg;
+        _statusBar.Paint += (s, e) => { using var pen = new Pen(Color.FromArgb(225,225,230)); e.Graphics.DrawLine(pen, 0, 0, _statusBar.Width, 0); };
+
+        // 左端：版本 + 就绪提示（用 Panel 容器使 label 垂直居中）
+        var statusLeft = new Panel { Dock = DockStyle.Left, Height = _statusBar.Height, Width = 160, BackColor = Color.Transparent };
+        _lblStatus.Text = "v" + AppVersion;
+        _lblStatus.Font = new Font("Microsoft YaHei", 8.5F);
+        _lblStatus.ForeColor = Color.Gray;
+        _lblStatus.AutoSize = true;
+        _lblStatus.Location = new Point(10, (_statusBar.Height - 16) / 2);   // 16≈文字高，垂直居中
+        statusLeft.Controls.Add(_lblStatus);
+        _statusBar.Controls.Add(statusLeft);
+
+        // 右端 i 按钮（无边框、贴状态栏底）
+        _btnAbout.Text = "i";
+        _btnAbout.Font = new Font("Segoe UI", 15F, FontStyle.Bold);
+        _btnAbout.Size = new Size(28, 28);
+        _btnAbout.FlatStyle = FlatStyle.Flat;
+        _btnAbout.FlatAppearance.BorderSize = 0;            // 无边框
+        _btnAbout.FlatAppearance.MouseOverBackColor = Color.FromArgb(235,240,250);
+        _btnAbout.FlatAppearance.MouseDownBackColor = Color.FromArgb(210,225,245);
+        _btnAbout.BackColor = Color.Transparent;
+        _btnAbout.ForeColor = Color.FromArgb(0,120,215);
+        _btnAbout.Cursor = Cursors.Hand;
+        _btnAbout.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+        _btnAbout.Click += OnAboutClick;
+        _statusBar.Controls.Add(_btnAbout);
+
+        // 「有更新」标记：i 左侧（状态栏内）
+        _lblUpdate.Text = "有更新";
+        _lblUpdate.Font = new Font("Microsoft YaHei", 8F, FontStyle.Bold);
+        _lblUpdate.AutoSize = true;
+        _lblUpdate.ForeColor = Color.White;
+        _lblUpdate.BackColor = Color.FromArgb(230,126,34);
+        _lblUpdate.Padding = new Padding(7,1,7,1);
+        _lblUpdate.Visible = false;
+        _lblUpdate.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+        _lblUpdate.Cursor = Cursors.Hand;
+        _lblUpdate.Click += OnAboutClick;
+        _statusBar.Controls.Add(_lblUpdate);
+
+        _statusBar.SizeChanged += (s, e) => LayoutStatusRight();
+        LayoutStatusRight();
+    }
+
+    void LayoutStatusRight()
+    {
+        _btnAbout.Location = new Point(_statusBar.ClientSize.Width - _btnAbout.Width - 8, (_statusBar.Height - _btnAbout.Height) / 2);
+        _lblUpdate.Location = new Point(_btnAbout.Left - _lblUpdate.Width - 8, (_statusBar.Height - _lblUpdate.Height) / 2);
+        _btnAbout.BringToFront();
+        _lblUpdate.BringToFront();
+    }
+
+    /// 更新左端状态文本（如切换目录/扫描/删除中状态）。
+    void SetStatus(string txt) => _lblStatus.Text = txt;
+
+    async void OnAboutClick(object? sender, EventArgs e)
+    {
+        var f = new AboutForm(this, _latestVersion, _hasUpdate, _updateUrl);
+        f.FormClosed += (s, e2) => {
+            if (f.WantsExit) { Close(); } // 便携版已替换并重启，旧进程退出
+            f.Dispose();
+        };
+        f.Show();
+    }
+
+    /// 启动后后台查 Gitee 最新版本，有新版则亮「有更新」标记。
+    void CheckForUpdatesInBackground()
+    {
+        Updater.LocalVersion = AppVersion;
+        Task.Run(async () =>
+        {
+            try
+            {
+                var (has, latest, url) = await Updater.CheckLatestAsync();
+                _hasUpdate = has; _latestVersion = latest; _updateUrl = url;
+                BeginInvoke(() => { _lblUpdate.Visible = has; LayoutStatusRight(); });
+            }
+            catch { /* 网络失败静默，不阻塞主流程 */ }
+        });
     }
 
     void OnAddClick(object? sender, EventArgs e)

@@ -1,6 +1,6 @@
 # FastDelete - build & publish & Inno installer (auto version bump)
 # Usage:
-#   .\build.ps1                 auto bump last part (1.0.1 -> 1.0.2) + publish + ISCC
+#   .\build.ps1                 auto bump last part + publish + portable + ISCC
 #   .\build.ps1 -Install        same + silent install
 #   .\build.ps1 -Version 1.2.0  manually set version (no auto bump)
 #   .\build.ps1 -SkipBump       keep current version (no bump)
@@ -44,7 +44,11 @@ else {
 $full = $v + ".0"
 Write-Host ("[version] build " + $v + "  (assembly " + $full + ")")
 
-### sync csproj (保留 CRLF：ReadAllText/WriteAllText) ###
+### 发布产物命名：体现 安装版/便携版 + Windows + x64 + 版本 ###
+$instName = "FastDelete-" + $v + "-Windows-x64-Installer.exe"
+$portName = "FastDelete-" + $v + "-Windows-x64-Portable.exe"
+
+### sync csproj (CRLF) ###
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $c = [System.IO.File]::ReadAllText($csproj)
 $c = $c -replace "<AssemblyVersion>.*?</AssemblyVersion>", ('<AssemblyVersion>' + $full + '</AssemblyVersion>')
@@ -53,22 +57,42 @@ $c = $c -replace "<InformationalVersion>.*?</InformationalVersion>", ('<Informat
 [System.IO.File]::WriteAllText($csproj, $c, $utf8NoBom)
 Write-Host ("[sync] csproj -> " + $full + " / " + $v)
 
-### sync iss (#define MyAppVersion 单行，保留 CRLF) ###
+### sync iss (MyAppVersion，CRLF) ###
 $ic = [System.IO.File]::ReadAllText($iss)
 $ic = $ic -replace "(?m)^#define MyAppVersion .*?$", ("#define MyAppVersion "" + $v + """)
 [System.IO.File]::WriteAllText($iss, $ic, $utf8NoBom)
 Write-Host ("[sync] fastdelete.iss MyAppVersion -> " + $v)
 
-Write-Host "[publish] dotnet publish ..."
+### 1) publish 框架依赖（Inno 要打包的产物，必须先于 ISCC）###
+Write-Host "[publish] dotnet publish (framework-dependent) ..."
 & $dotnet publish $csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -v m -nologo
-if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit " + $LASTEXITCODE + ")" }
+if ($LASTEXITCODE -ne 0) { throw "publish failed (exit " + $LASTEXITCODE + ")" }
 
-Write-Host "[Inno] compiling installer ..."
+### 2) 安装版 ISCC 编译 + 重命名 ###
+Write-Host "[installer] ISCC ..."
 & $iscc $iss | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed (exit " + $LASTEXITCODE + ")" }
+$setup = Join-Path $root ("installer\Output\" + $instName)
+if (Test-Path (Join-Path $root "installer\Output\FastDelete_Setup.exe")) {
+    Move-Item -Force (Join-Path $root "installer\Output\FastDelete_Setup.exe") $setup
+}
+Write-Host ("[installer] " + $setup)
 
-$setup = Join-Path $root "installer\Output\FastDelete_Setup.exe"
-Write-Host ("[done] " + $setup + "  (v" + $v + ")")
+### 3) 便携版（框架依赖单文件，输出到 dist\portable，重命名）###
+$portOut = Join-Path $root "dist\portable"
+Write-Host "[portable] dotnet publish (portable) ..."
+& $dotnet publish $csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o $portOut -v m -nologo
+if ($LASTEXITCODE -ne 0) { throw "portable publish failed (exit " + $LASTEXITCODE + ")" }
+# 清旧 exe / pdb，只留新命名的
+if (Test-Path $portOut) {
+    Get-ChildItem $portOut -File | Where-Object { $_.Name -like "FastDelete*.exe" -and $_.Name -ne $portName } | Remove-Item -Force
+    Get-ChildItem $portOut -File -Filter *.pdb | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+Move-Item -Force (Join-Path $portOut "FastDelete.exe") (Join-Path $portOut $portName)
+Write-Host ("[portable] " + (Join-Path $portOut $portName))
+
+Write-Host ""
+Write-Host ("[done] v" + $v + ":", [System.Environment]::NewLine + "   安装版  " + $setup + [System.Environment]::NewLine + "   便携版  " + (Join-Path $portOut $portName))
 
 if ($Install) {
     Write-Host "[install] silent install ..."
