@@ -132,25 +132,25 @@ public static class Updater
                 // （UseShellExecute=true + Verb="runas"；若已是管理员则直接跑，不弹 UAC）
                 try
                 {
+                    // Inno 安装器自身 manifest 带 requireAdministrator，Windows 启动它时自动弹 UAC 提权
+                    // 升级器不再额外 runas（之前 runas + 静默组合导致安装器挂起、无人点 UAC → 升级失败）
                     var psi = new ProcessStartInfo
                     {
                         FileName = tmp,
                         Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=rightclick",
-                        UseShellExecute = true,
-                        Verb = "runas"
+                        UseShellExecute = false
                     };
                     using (var p = Process.Start(psi))
                     {
-                        // 等待安装器进程启动完成（静默安装在后台跑，不阻塞退出）
+                        // 给安装器 3 秒完成启动（Inno 自动弹 UAC，用户点"是"后静默覆盖安装）
                         p.WaitForExit(3000);
                     }
-                    log?.Invoke("已启动安装器（管理员），正在静默覆盖安装…");
+                    log?.Invoke("已启动安装器，正在静默覆盖安装。若弹出 UAC 提示框请允许。");
                     return true;
                 }
-                catch (System.ComponentModel.Win32Exception wex)
+                catch (Exception ex)
                 {
-                    // UAC 被拒（用户点"取消"）
-                    log?.Invoke("升级被取消（需管理员权限安装）。请手动右键「以管理员身份运行」安装包。");
+                    log?.Invoke("启动安装器失败：" + ex.Message + "。请手动以管理员身份运行安装包。");
                     return false;
                 }
             }
