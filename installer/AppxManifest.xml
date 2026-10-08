@@ -3,7 +3,7 @@
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
   <Identity Name="FastDelete.Hui"
             Publisher="CN=Hui"
-            Version="1.0.4.0"
+            Version="1.0.9.0"
             ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>FastDelete</DisplayName>

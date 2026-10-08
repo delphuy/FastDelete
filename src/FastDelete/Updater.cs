@@ -127,18 +127,32 @@ public static class Updater
             }
             else
             {
-                // 安装版：静默覆盖安装
-                // 先启动 Inno 静默安装器（它会覆盖安装），当前进程随后退出给安装器让路
-                Process.Start(new ProcessStartInfo
+                // 安装版：以管理员身份静默覆盖安装
+                // Inno 安装器要写 C:\Program Files 需提权 → 用 runas 动词触发 UAC 提权启动
+                // （UseShellExecute=true + Verb="runas"；若已是管理员则直接跑，不弹 UAC）
+                try
                 {
-                    FileName = tmp,
-                    Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=rightclick",
-                    UseShellExecute = true
-                });
-                Environment.Exit(0);
-                try { File.Delete(tmp); } catch { }
-                log?.Invoke("安装版已启动升级…");
-                return true;
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = tmp,
+                        Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=rightclick",
+                        UseShellExecute = true,
+                        Verb = "runas"
+                    };
+                    using (var p = Process.Start(psi))
+                    {
+                        // 等待安装器进程启动完成（静默安装在后台跑，不阻塞退出）
+                        p.WaitForExit(3000);
+                    }
+                    log?.Invoke("已启动安装器（管理员），正在静默覆盖安装…");
+                    return true;
+                }
+                catch (System.ComponentModel.Win32Exception wex)
+                {
+                    // UAC 被拒（用户点"取消"）
+                    log?.Invoke("升级被取消（需管理员权限安装）。请手动右键「以管理员身份运行」安装包。");
+                    return false;
+                }
             }
         }
         catch (Exception ex)
