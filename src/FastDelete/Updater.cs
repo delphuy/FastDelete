@@ -21,10 +21,27 @@ public static class Updater
     public static string LocalVersion { get; set; } = "1.0.0";
 
     /// <summary>便携版判断：exe 不在 Program Files（即拷到任意位置的单文件）</summary>
-    public static bool IsPortable { get; } = !Path.GetFullPath(AppContext.BaseDirectory)
-        .StartsWith(@"C:\\Program Files", StringComparison.OrdinalIgnoreCase);
+public static bool IsPortable
+    {
+        get
+        {
+            // .NET 单文件 publish 的 AppContext.BaseDirectory 是临时解压目录，不可靠。
+            // 改用 exe 真实路径判断：C:\Program Files 下 = 安装版，其他 = 便携版。
+            try
+            {
+                string exePath = Process.GetCurrentProcess().MainModule?.FileName
+                    ?? Path.Combine(AppContext.BaseDirectory, "FastDelete.exe");
+                exePath = Path.GetFullPath(exePath);
+                return !exePath.StartsWith(@"C:\Program Files", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return true; // 探测失败当便携版处理
+            }
+        }
+    }
 
-    // ── 日志（写文件 + 内存，辉哥哥升级失败时看这个文件定位断点）──
+    // ── 日志（写文件 + 内存，升级失败时看此文件定位断点）──
     static readonly List<string> LogLines = new();
     static string LogPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -38,7 +55,7 @@ public static class Updater
         {
             var dir = Path.GetDirectoryName(LogPath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            File.AppendAllText(LogPath, line + Environment.NewLine, Encoding.UTF8);
+            File.AppendAllText(LogPath, line + Environment.NewLine, System.Text.Encoding.UTF8);
         }
         catch { /* 日志写失败不影响升级流程 */ }
     }
