@@ -90,7 +90,7 @@ public static class Updater
         try
         {
             string selfDir = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule!.FileName)!;
-            string tmp = Path.Combine(selfDir, "FastDelete_update.tmp");
+            string tmp = Path.Combine(Path.GetTempPath(), "FastDelete_update_" + Guid.NewGuid().ToString("N") + ".tmp");
             await DownloadToAsync(url, tmp, onProgress);
             log?.Invoke("已下载新版本");
 
@@ -106,6 +106,7 @@ public static class Updater
                     "set \"D=" + oldExe + "\"",
                     "set \"T=" + tmp + "\"",
                     "if not exist \"%T%\" exit /b 1",
+                    "taskkill /F /IM FastDelete.exe >nul 2>&1",
                     "set \"O=%D%.old\"",
                     "move /Y \"%D%\" \"%O%\" >nul",
                     "move /Y \"%T%\" \"%D\"",
@@ -127,12 +128,14 @@ public static class Updater
             else
             {
                 // 安装版：静默覆盖安装
+                // 先启动 Inno 静默安装器（它会覆盖安装），当前进程随后退出给安装器让路
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = tmp,
-                    Arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=rightclick",
+                    Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=rightclick",
                     UseShellExecute = true
                 });
+                Environment.Exit(0);
                 try { File.Delete(tmp); } catch { }
                 log?.Invoke("安装版已启动升级…");
                 return true;
