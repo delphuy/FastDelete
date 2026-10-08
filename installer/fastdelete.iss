@@ -1,6 +1,6 @@
 ; FastDelete Inno Setup 安装脚本
 #define MyAppName "FastDelete"
-#define MyAppVersion "1.0.14"
+#define MyAppVersion "1.0.16"
 #define MyAppPublisher "Hui"
 #define MyAppExeName "FastDelete.exe"
 #define PublishDir "..\src\FastDelete\bin\Release\net8.0-windows\win-x64\publish"

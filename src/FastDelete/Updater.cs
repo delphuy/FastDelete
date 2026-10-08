@@ -172,6 +172,14 @@ public static bool IsPortable
             }
             log?.Invoke("已下载新版本到 " + tmp);
             UpdateLog("下载成功 (" + fsi.Length + " bytes)");
+            // 把 .tmp 改成 .exe（避免 SmartScreen 对未知后缀拦截 Inno 安装器）
+            string installExe = tmp;
+            if (tmp.EndsWith(".tmp"))
+            {
+                string exeName = tmp.Substring(0, tmp.Length - 4) + ".exe";
+                try { File.Move(tmp, exeName); tmp = exeName; installExe = exeName; UpdateLog(".tmp → .exe: " + tmp); }
+                catch (Exception mex) { UpdateLog(".tmp 改名失败（保留 .tmp）: " + mex.Message); }
+            }
 
             // 辉哥哥 6 步第 4 步：下载完成，询问"是否马上升级"
             if (owner != null)
@@ -234,50 +242,45 @@ public static bool IsPortable
             }
             else
             {
-                // ③ 安装版：先检测运行中进程，询问是否关闭并执行安装（辉哥哥 6 步第 6 步）
-                UpdateLog("步骤3 安装版: 检测运行中进程");
-                var procs = Process.GetProcessesByName("FastDelete");
-                UpdateLog("FastDelete 进程数=" + procs.Length);
-                foreach (var pr in procs) { try { pr.Dispose(); } catch { } }
-                if (owner != null && procs.Length > 1)
+                // ③ 安装版：辉哥哥要求的 2 点 —— ① 杀掉运行中 FastDelete 进程；② 打开下载好的 exe（就像双击）
+                UpdateLog("步骤3 杀掉运行中 FastDelete 进程");
+                try
                 {
-                    var p2 = System.Windows.Forms.MessageBox.Show(
-                        owner,
-                        "检测到 FastDelete 正在运行。是否关闭运行中进程并执行安装？",
-                        "FastDelete 更新",
-                        System.Windows.Forms.MessageBoxButtons.YesNo,
-                        System.Windows.Forms.MessageBoxIcon.Warning);
-                    UpdateLog("询问关闭进程: 选择=" + p2);
-                    if (p2 != System.Windows.Forms.DialogResult.Yes)
+                    var procs = Process.GetProcessesByName("FastDelete");
+                    UpdateLog("FastDelete 进程数=" + procs.Length);
+                    foreach (var pr in procs)
                     {
-                        log?.Invoke("已取消（运行中进程未关闭）");
-                        return false;
+                        try { if (pr.Id != Process.GetCurrentProcess().Id) pr.Kill(); } catch { }
+                        try { pr.Dispose(); } catch { }
                     }
+                    UpdateLog("运行中进程已杀掉（保留当前进程，等 Inno 装完）");
                 }
+                catch (Exception kex) { UpdateLog("杀进程异常: " + kex.Message); }
 
-                // runas 启动 Inno 安装器（交互界面让辉哥哥看到安装过程）
-                UpdateLog("启动 Inno 安装器 (runas) " + tmp);
+                // ④ 打开下载好的 exe（就像双击：UseShellExecute=true 走 Shell，Inno 自身要 UAC 时 Windows 自动弹）
+                UpdateLog("步骤4 打开下载好的 exe: " + installExe);
                 try
                 {
                     var psi = new ProcessStartInfo
                     {
-                        FileName = tmp,
-                        Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=rightclick",
+                        FileName = installExe,
+                        Arguments = "/TASKS=rightclick",
                         UseShellExecute = true,
-                        Verb = "runas"
+                        WorkingDirectory = Path.GetTempPath()
                     };
                     using (var proc = Process.Start(psi))
                     {
                         UpdateLog("安装器进程已启动 pid=" + proc.Id);
-                        proc.WaitForExit(3000); // 不阻塞，安装器后台静默跑
+                        proc.WaitForExit(1000);
                     }
-                    UpdateLog("安装器已启动（3s 内完成启动或仍在后台跑）");
-                    log?.Invoke("已启动安装器（管理员）。若弹出 UAC 请允许，安装完成后程序自动重启。");
+                    log?.Invoke("已打开安装程序，请在安装界面完成安装。若弹出 UAC 请允许。");
+                    UpdateLog("=== ApplyUpdate 完成（安装版）===");
+                    return true;
                 }
                 catch (Exception ex)
                 {
-                    UpdateLog("启动安装器失败: " + ex.GetType().Name + " | " + ex.Message);
-                    log?.Invoke("启动安装器失败：" + ex.Message + "。请手动右键安装包「以管理员身份运行」。");
+                    UpdateLog("打开安装器失败: " + ex.GetType().Name + " | " + ex.Message);
+                    log?.Invoke("打开安装器失败：" + ex.Message + "。请手动双击 " + installExe + " 完成安装。");
                     return false;
                 }
                 UpdateLog("=== ApplyUpdate 完成（安装版已启动）===");
