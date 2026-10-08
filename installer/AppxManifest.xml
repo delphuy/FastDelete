@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
+  <Identity Name="FastDelete.Hui"
+            Publisher="CN=Hui"
+            Version="1.0.4.0"
+            ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>FastDelete</DisplayName>
+    <PublisherDisplayName>Hui</PublisherDisplayName>
+    <Logo>assets\Logo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.999" />
+  </Dependencies>
+</Package>

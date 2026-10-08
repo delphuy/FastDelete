@@ -17,7 +17,7 @@ public static class ConfirmDialogs
 
         if (M < 100)
         {
-            using var f = new ConfirmForm("（￣ε￣）就这点儿也配动用牛刀？本座拒绝执行！", "听你的，删", "那算了", owner, ConfirmStyle.Warn);
+            using var f = new ConfirmForm("（￣ε￣）就这点儿也配动用牛刀？", "少罗嗦，快删！", "那算了", owner, ConfirmStyle.Warn);
             f.ShowDialog();
             return f.ChoseYes;
         }
