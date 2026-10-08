@@ -150,7 +150,8 @@ public sealed class AboutForm : Form
             _lblStatus.Text = "发现 " + ver + "，开始下载…";
             bool ok = await Updater.ApplyUpdateAsync(url,
                 p => _lblStatus.Text = p > 0 ? $"下载中 {p*100:0}%…" : "下载中…",
-                msg => _lblStatus.Text = msg);
+                msg => _lblStatus.Text = msg,
+                this);
             if (!ok) _lblStatus.Text = "更新失败，请重试或手动下载。";
             else { _lblStatus.Text = "更新完成。"; WantsExit = Updater.IsPortable; }
         }
