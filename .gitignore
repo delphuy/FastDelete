@@ -6,6 +6,9 @@ installer/Output/
 *.log
 log/
 
+# diagnostics / scratch (throwaway repro scripts and logs)
+diag/
+
 # binaries / exes
 *.exe
 *.pdb

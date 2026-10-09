@@ -10,10 +10,14 @@
     <RootNamespace>FastDelete</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <AssemblyVersion>1.0.16.0</AssemblyVersion>
-    <FileVersion>1.0.16.0</FileVersion>
-    <InformationalVersion>1.0.16</InformationalVersion>
+    <AssemblyVersion>1.0.17.0</AssemblyVersion>
+    <FileVersion>1.0.17.0</FileVersion>
+    <InformationalVersion>1.0.17</InformationalVersion>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- 把 IExplorerCommand 的 COM DLL 打进发布产物，Inno 安装包随之包含 -->
+    <ProjectReference Include="..\FastDelete.Shell\FastDelete.Shell.csproj" />
+  </ItemGroup>
 </Project>

@@ -19,7 +19,7 @@ public sealed class FastDeleteCommand : IExplorerCommand, IExplorerCommandOvervi
     // ===== IExplorerCommand =====
     int IExplorerCommand.GetTitle([MarshalAs(UnmanagedType.LPWStr)] out string title)
     {
-        title = "fastdelete - 闪电删除";
+        title = "Fast Delete - 极速删除";
         return S_OK;
     }
     int IExplorerCommand.GetToolTip([MarshalAs(UnmanagedType.LPWStr)] out string tip)

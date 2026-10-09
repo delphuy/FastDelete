@@ -16,7 +16,7 @@ $src     = Join-Path $root "src\FastDelete"
 $csproj   = Join-Path $src  "FastDelete.csproj"
 $iss      = Join-Path $root "installer\fastdelete.iss"
 $vfile    = Join-Path $root "version.txt"
-$iscc     = "C:\Users\youdh\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
+$iscc     = "C:\Program Files\Inno Setup 7\ISCC.exe"
 $dotnet   = "C:\Program Files\dotnet\dotnet.exe"
 
 [System.Environment]::SetEnvironmentVariable("USERPROFILE","C:\Users\youdh")
@@ -44,7 +44,7 @@ else {
 $full = $v + ".0"
 Write-Host ("[version] build " + $v + "  (assembly " + $full + ")")
 
-### 发布产物命名：体现 安装版/便携版 + Windows + x64 + 版本 ###
+### Naming scheme: installer / portable + Windows + x64 + version ###
 $instName = "FastDelete-" + $v + "-Windows-x64-Installer.exe"
 $portName = "FastDelete-" + $v + "-Windows-x64-Portable.exe"
 
@@ -57,18 +57,28 @@ $c = $c -replace "<InformationalVersion>.*?</InformationalVersion>", ('<Informat
 [System.IO.File]::WriteAllText($csproj, $c, $utf8NoBom)
 Write-Host ("[sync] csproj -> " + $full + " / " + $v)
 
-### sync iss (MyAppVersion，CRLF) ###
+### sync iss (MyAppVersion) ###
 $ic = [System.IO.File]::ReadAllText($iss)
-$ic = $ic -replace "(?m)^#define MyAppVersion .*?$", ("#define MyAppVersion "" + $v + """)
+$ic = $ic -replace "(?m)^#define MyAppVersion .*?$", ('#define MyAppVersion "' + $v + '"')
 [System.IO.File]::WriteAllText($iss, $ic, $utf8NoBom)
 Write-Host ("[sync] fastdelete.iss MyAppVersion -> " + $v)
 
-### 1) publish 框架依赖（Inno 要打包的产物，必须先于 ISCC）###
-Write-Host "[publish] dotnet publish (framework-dependent) ..."
+### 1) publish (framework-dependent; must precede ISCC) ###
+Write-Host "[publish] dotnet publish main (framework-dependent) ..."
 & $dotnet publish $csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -v m -nologo
 if ($LASTEXITCODE -ne 0) { throw "publish failed (exit " + $LASTEXITCODE + ")" }
 
-### 2) 安装版 ISCC 编译 + 重命名 ###
+### 1b) publish IExplorerCommand COM DLL alongside the single-file exe ###
+# FastDelete.Shell.dll must land in the same folder as FastDelete.exe so the
+# Win11 first-screen right-click verb (InprocServer32) can be loaded by Explorer.
+# Publish it as a plain (non-single-file) assembly next to the main publish output.
+$shellCsproj = Join-Path $root "src\FastDelete.Shell\FastDelete.Shell.csproj"
+$shellOut    = Join-Path $root "src\FastDelete\bin\Release\net8.0-windows\win-x64\publish"
+Write-Host "[publish] dotnet publish FastDelete.Shell (COM DLL) ..."
+& $dotnet publish $shellCsproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o $shellOut -v m -nologo
+if ($LASTEXITCODE -ne 0) { throw "publish shell DLL failed (exit " + $LASTEXITCODE + ")" }
+
+### 2) ISCC compile + rename installer ###
 Write-Host "[installer] ISCC ..."
 & $iscc $iss | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed (exit " + $LASTEXITCODE + ")" }
@@ -78,27 +88,33 @@ if (Test-Path (Join-Path $root "installer\Output\FastDelete_Setup.exe")) {
 }
 Write-Host ("[installer] " + $setup)
 
-### 3) 便携版（框架依赖单文件，输出到 dist\portable，重命名）###
+### 3) portable (framework-dependent single file, into dist\portable, rename) ###
 $portOut = Join-Path $root "dist\portable"
 Write-Host "[portable] dotnet publish (portable) ..."
 & $dotnet publish $csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o $portOut -v m -nologo
 if ($LASTEXITCODE -ne 0) { throw "portable publish failed (exit " + $LASTEXITCODE + ")" }
-# 清旧 exe / pdb，只留新命名的
+# Clean old versioned exes / pdb (never the fresh FastDelete.exe that dotnet just produced)
 if (Test-Path $portOut) {
-    Get-ChildItem $portOut -File | Where-Object { $_.Name -like "FastDelete*.exe" -and $_.Name -ne $portName } | Remove-Item -Force
-    Get-ChildItem $portOut -File -Filter *.pdb | Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem $portOut -File -Filter "FastDelete-*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $portName } | Remove-Item -Force
+    Get-ChildItem $portOut -File -Filter *.pdb -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 }
 Move-Item -Force (Join-Path $portOut "FastDelete.exe") (Join-Path $portOut $portName)
 Write-Host ("[portable] " + (Join-Path $portOut $portName))
 
 Write-Host ""
-Write-Host ("[done] v" + $v + ":", [System.Environment]::NewLine + "   安装版  " + $setup + [System.Environment]::NewLine + "   便携版  " + (Join-Path $portOut $portName))
+Write-Host ("[done] v" + $v + ":", [System.Environment]::NewLine + "   Installer  " + $setup + [System.Environment]::NewLine + "   Portable   " + (Join-Path $portOut $portName))
 
 if ($Install) {
     Write-Host "[install] silent install ..."
-    taskkill /F /IM FastDelete.exe 2>$null
+    # taskkill returns non-zero when the process is not running; that is not a
+    # build error. Run it and ignore the exit code explicitly.
+    $ErrorActionPreference = "SilentlyContinue"
+    taskkill /F /IM FastDelete.exe 2>$null | Out-Null
+    $ErrorActionPreference = "Stop"
     & $setup /SILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=rightclick
     if ($LASTEXITCODE -ne 0) { throw "install failed (exit " + $LASTEXITCODE + ")" }
-    taskkill /F /IM FastDelete.exe 2>$null
+    $ErrorActionPreference = "SilentlyContinue"
+    taskkill /F /IM FastDelete.exe 2>$null | Out-Null
+    $ErrorActionPreference = "Stop"
     Write-Host "[install] done"
 }
